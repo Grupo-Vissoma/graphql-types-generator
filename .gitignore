@@ -1,6 +1,8 @@
 # Compiled class file
 *.class
-
+.env
+.env.prod
+.env.dev
 # Log file
 *.log
 .gradle
