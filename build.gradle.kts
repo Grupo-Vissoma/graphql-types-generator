@@ -1,7 +1,9 @@
 import java.net.URI
 
 fun loadEnvFile(path: String = ".env") {
-    File(path).forEachLine {
+    val file = File(path)
+    if (!file.exists()) return
+    file.forEachLine {
         val (key, value) = it.split("=", limit = 2)
         System.setProperty(key.trim(), value.trim())
     }
