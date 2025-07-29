@@ -1,6 +1,5 @@
 package pt.grupovissoma.typesgenerator
 
-
 import com.squareup.kotlinpoet.*
 import io.github.classgraph.ClassGraph
 import org.gradle.api.DefaultTask
@@ -11,7 +10,6 @@ import java.nio.file.Path
 import jakarta.persistence.Id
 import kotlin.reflect.KProperty1
 import kotlin.reflect.KVisibility
-
 
 /** Gradle incremental: all inputs & outputs declared */
 @CacheableTask
@@ -27,7 +25,11 @@ abstract class GenerateEntityTypesTask : DefaultTask() {
     @TaskAction
     fun generate() {
         val out = outputDir.get().asFile.toPath()
-        project.delete(out.toFile())
+
+        // Use standard file operations instead of project.delete()
+        if (out.toFile().exists()) {
+            out.toFile().deleteRecursively()
+        }
         out.toFile().mkdirs()
 
         val filterPkgs = filters.get()
@@ -36,7 +38,7 @@ abstract class GenerateEntityTypesTask : DefaultTask() {
             .enableAllInfo()
             .scan()
             .use { scan ->
-                scan.getClassesWithAnnotation("@Entity")
+                scan.getClassesWithAnnotation("jakarta.persistence.Entity")
                     .loadClasses()
             }
 
@@ -88,7 +90,7 @@ abstract class GenerateEntityTypesTask : DefaultTask() {
                     props.forEach { p ->
                         val type = p.returnType.asTypeName()
                         val finalType =
-                            if (makeNullable && !type.isNullable) type.copy(nullable = true) else type // TODO see here because is strange
+                            if (makeNullable && !type.isNullable) type.copy(nullable = true) else type
                         val paramSpec = ParameterSpec.builder(
                             p.name, finalType
                         ).apply {
