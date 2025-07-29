@@ -9,7 +9,6 @@ fun loadEnvFile(path: String = ".env") {
     }
 }
 
-// Carrega variáveis do arquivo .env
 loadEnvFile()
 
 fun getEnvOrProperty(name: String): String =
@@ -37,6 +36,7 @@ repositories {
 
     }
 }
+
 sonar {
     properties {
         property("sonar.host.url", getEnvOrProperty("SONAR_HOST_URL"))
@@ -45,6 +45,7 @@ sonar {
         property("sonar.token", getEnvOrProperty("SONAR_TOKEN"))
     }
 }
+
 dependencies {
     implementation("com.google.devtools.ksp:symbol-processing-api:2.2.0-2.0.2")
     implementation("com.squareup:kotlinpoet:2.2.0")
