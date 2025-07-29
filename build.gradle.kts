@@ -22,6 +22,7 @@ plugins {
     `kotlin-dsl`
     id("com.gradle.plugin-publish") version "1.3.1"
     id("org.sonarqube") version "6.2.0.5505"
+    id("maven-publish")
 }
 
 group = "pt.grupovissoma"
