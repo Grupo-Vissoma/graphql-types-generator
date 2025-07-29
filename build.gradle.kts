@@ -17,16 +17,16 @@ fun getEnvOrProperty(name: String): String =
 
 
 plugins {
-    kotlin("jvm") version "2.0.21"
+    kotlin("jvm") version "2.2.0"
     `java-gradle-plugin`
-    `kotlin-dsl`
+//    `kotlin-dsl`
     id("com.gradle.plugin-publish") version "1.3.1"
     id("org.sonarqube") version "6.2.0.5505"
     `maven-publish`
 }
 
 group = "pt.grupovissoma"
-version = "1.0.0"
+version = "1.0.1"
 
 repositories {
     mavenCentral()
@@ -46,9 +46,12 @@ sonar {
     }
 }
 dependencies {
-    implementation("io.github.classgraph:classgraph:4.8.181")
+    implementation("com.google.devtools.ksp:symbol-processing-api:2.2.0-2.0.2")
     implementation("com.squareup:kotlinpoet:2.2.0")
+    implementation("com.squareup:kotlinpoet-ksp:2.2.0")
     implementation(kotlin("reflect"))
+    implementation("org.jetbrains.kotlin:kotlin-gradle-plugin:2.2.0")
+
     // jakarta.persistence for @Id annotation
     implementation("jakarta.persistence:jakarta.persistence-api:3.2.0")
     testImplementation(platform("org.junit:junit-bom:5.13.4"))
