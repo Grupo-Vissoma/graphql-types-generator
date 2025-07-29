@@ -22,7 +22,7 @@ plugins {
     `kotlin-dsl`
     id("com.gradle.plugin-publish") version "1.3.1"
     id("org.sonarqube") version "6.2.0.5505"
-    id("maven-publish")
+    `maven-publish`
 }
 
 group = "pt.grupovissoma"
@@ -75,22 +75,19 @@ tasks.test {
     useJUnitPlatform()
 }
 
-tasks.publish {
-    apply(plugin = "maven-publish")
-
-    publishing {
-        repositories {
-            maven {
-                name = "GitHubPackages"
-                url = URI.create("https://maven.pkg.github.com/grupo-vissoma/graphql-kotlin")
-                credentials {
-                    username = System.getenv("GITHUB_ACTOR")
-                    password = System.getenv("GITHUB_TOKEN")
-                }
+publishing {
+    repositories {
+        maven {
+            name = "GitHubPackages"
+            url = URI.create("https://maven.pkg.github.com/grupo-vissoma/graphql-kotlin")
+            credentials {
+                username = System.getenv("GITHUB_ACTOR")
+                password = System.getenv("GITHUB_TOKEN")
             }
         }
     }
 }
+
 
 kotlin {
     jvmToolchain(21)
