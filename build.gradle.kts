@@ -79,7 +79,7 @@ publishing {
     repositories {
         maven {
             name = "GitHubPackages"
-            url = URI.create("https://maven.pkg.github.com/grupo-vissoma/graphql-kotlin")
+            url = URI.create("https://maven.pkg.github.com/grupo-vissoma/graphql-types-generator")
             credentials {
                 username = System.getenv("GITHUB_ACTOR")
                 password = System.getenv("GITHUB_TOKEN")
