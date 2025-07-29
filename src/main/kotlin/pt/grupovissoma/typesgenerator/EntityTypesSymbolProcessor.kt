@@ -7,6 +7,7 @@ import com.squareup.kotlinpoet.*
 import com.squareup.kotlinpoet.ksp.*
 import jakarta.persistence.Entity
 import jakarta.persistence.Id
+import kotlin.reflect.KClass
 
 class EntityTypesSymbolProcessor(
     private val codeGenerator: CodeGenerator,
@@ -15,121 +16,109 @@ class EntityTypesSymbolProcessor(
 ) : SymbolProcessor {
 
     override fun process(resolver: Resolver): List<KSAnnotated> {
-        val symbols = resolver.getSymbolsWithAnnotation(Entity::class.qualifiedName!!)
+        val entities = resolver
+            .getSymbolsWithAnnotation(Entity::class.qualifiedName!!)
             .filterIsInstance<KSClassDeclaration>()
             .toList()
 
-        if (symbols.isEmpty()) {
-            return emptyList()
-        }
+        if (entities.isEmpty()) return emptyList()
 
-        val deferredSymbols = mutableListOf<KSAnnotated>()
+        val deferred = mutableListOf<KSAnnotated>()
 
-        symbols.forEach { classDeclaration ->
-            if (!classDeclaration.validate()) {
-                deferredSymbols.add(classDeclaration)
+        entities.forEach { entity ->
+            if (!entity.validate()) {
+                deferred += entity
                 return@forEach
             }
-
-            try {
-                generateInputAndUpdateTypes(classDeclaration)
-            } catch (e: Exception) {
-                logger.error("Error generating types for ${classDeclaration.simpleName.asString()}: ${e.message}", classDeclaration)
-                deferredSymbols.add(classDeclaration)
-            }
+            runCatching { generateTypes(entity) }
+                .onFailure {
+                    logger.error("✗ ${entity.simpleName.asString()}: ${it.message}", entity)
+                    deferred += entity
+                }
         }
-
-        return deferredSymbols
+        return deferred
     }
 
-    private fun generateInputAndUpdateTypes(classDeclaration: KSClassDeclaration) {
-        val className = classDeclaration.simpleName.asString()
-        val packageName = classDeclaration.packageName.asString()
-        val typesPackageName = "$packageName.types"
+    private fun generateTypes(entity: KSClassDeclaration) {
+        val baseName = entity.simpleName.asString()
+        val pkg = entity.packageName.asString()
+        val outPkg = "$pkg.types"
 
-        // Obter propriedades da classe
-        val properties = classDeclaration.getAllProperties().toList()
+        val props = entity.getAllProperties().toList()
+        val idPropNames = props
+            .filter { p -> p.hasAnnotation(Id::class) }
+            .map { it.simpleName.asString() }
+            .toSet()
 
-        // Identificar propriedades com @Id
-        val idProperties = properties.filter { property ->
-            property.annotations.any { annotation ->
-                annotation.shortName.asString() == "Id" ||
-                        annotation.annotationType.resolve().declaration.qualifiedName?.asString() == Id::class.qualifiedName
-            }
+        val nonIdProps = props.filter {
+            it.isMutable && it.simpleName.asString() !in idPropNames
         }
 
-        val idPropertyNames = idProperties.map { it.simpleName.asString() }.toSet()
-
-        // Propriedades não-ID para Input e Update
-        val nonIdProperties = properties.filter {
-            it.simpleName.asString() !in idPropertyNames &&
-                    it.isMutable // Apenas propriedades mutáveis
-        }
-
-        // Gerar classe Input (todas as propriedades não-ID são obrigatórias)
-        generateDataClass(
-            name = "${className}Input",
-            packageName = typesPackageName,
-            properties = nonIdProperties,
-            makeNullable = false
+        // Input (non-nullable)
+        writeDataClass(
+            name = "${baseName}${options["inputSuffix"] ?: "Input"}",
+            packageName = outPkg,
+            properties = nonIdProps,
+            nullable = false,
+            originating = entity.containingFile!!
         )
 
-        // Gerar classe Update (todas as propriedades não-ID são opcionais)
-        generateDataClass(
-            name = "${className}Update",
-            packageName = typesPackageName,
-            properties = nonIdProperties,
-            makeNullable = true
+        // Update (nullable)
+        writeDataClass(
+            name = "${baseName}${options["updateSuffix"] ?: "Update"}",
+            packageName = outPkg,
+            properties = nonIdProps,
+            nullable = true,
+            originating = entity.containingFile!!
         )
     }
 
-    private fun generateDataClass(
+    private fun writeDataClass(
         name: String,
         packageName: String,
         properties: List<KSPropertyDeclaration>,
-        makeNullable: Boolean
+        nullable: Boolean,
+        originating: KSFile
     ) {
-        val classBuilder = TypeSpec.classBuilder(name)
+        val ctor = FunSpec.constructorBuilder()
+        val klass = TypeSpec.classBuilder(name)
             .addModifiers(KModifier.DATA)
 
-        val constructorBuilder = FunSpec.constructorBuilder()
+        properties.forEach { prop ->
+            val pName = prop.simpleName.asString()
+            var pType = prop.type.toTypeName()
+            if (nullable && !pType.isNullable) pType = pType.copy(nullable = true)
 
-        properties.forEach { property ->
-            val propertyName = property.simpleName.asString()
-            val originalType = property.type.toTypeName()
-
-            // Determinar o tipo final (nullable ou não)
-            val finalType = if (makeNullable && !originalType.isNullable) {
-                originalType.copy(nullable = true)
-            } else {
-                originalType
-            }
-
-            // Adicionar parâmetro ao construtor
-            val parameterSpec = ParameterSpec.builder(propertyName, finalType).apply {
-                if (makeNullable) {
-                    defaultValue("null")
-                }
-            }.build()
-
-            constructorBuilder.addParameter(parameterSpec)
-
-            // Adicionar propriedade à classe
-            val propertySpec = PropertySpec.builder(propertyName, finalType)
-                .initializer(propertyName)
-                .build()
-
-            classBuilder.addProperty(propertySpec)
+            ctor.addParameter(
+                ParameterSpec.builder(pName, pType)
+                    .apply { if (nullable) defaultValue("null") }
+                    .build()
+            )
+            klass.addProperty(
+                PropertySpec.builder(pName, pType)
+                    .initializer(pName)
+                    .build()
+            )
         }
 
-        classBuilder.primaryConstructor(constructorBuilder.build())
+        klass.primaryConstructor(ctor.build())
 
-        val fileSpec = FileSpec.builder(packageName, name)
-            .addType(classBuilder.build())
-            .addFileComment("AUTO-GENERATED by graphql-types-generator using KSP. Do not edit.")
+        FileSpec.builder(packageName, name)
+            .addType(klass.build())
+            .addFileComment("AUTO-GENERATED – não editar.")
             .build()
-
-        // Escrever arquivo
-        fileSpec.writeTo(codeGenerator, Dependencies(false))
+            .writeTo(
+                codeGenerator,
+                aggregating = false,
+                originatingKSFiles = listOf(originating)
+            )
     }
 }
+
+/* helper */
+private fun KSPropertyDeclaration.hasAnnotation(klass: KClass<*>): Boolean =
+    annotations.any {
+        it.shortName.asString() == klass.simpleName ||
+                it.annotationType.resolve()
+                    .declaration.qualifiedName?.asString() == klass.qualifiedName
+    }
