@@ -9,7 +9,6 @@ import org.gradle.api.provider.ListProperty
 import org.gradle.api.tasks.*
 import java.nio.file.Path
 import jakarta.persistence.Id
-import org.jetbrains.annotations.Nullable
 import kotlin.reflect.KProperty1
 import kotlin.reflect.KVisibility
 
@@ -37,7 +36,7 @@ abstract class GenerateEntityTypesTask : DefaultTask() {
             .enableAllInfo()
             .scan()
             .use { scan ->
-                scan.getClassesWithAnnotation("jakarta.persistence.Entity")
+                scan.getClassesWithAnnotation("@Entity")
                     .loadClasses()
             }
 
