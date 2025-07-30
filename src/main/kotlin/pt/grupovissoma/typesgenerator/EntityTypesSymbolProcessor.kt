@@ -15,110 +15,144 @@ class EntityTypesSymbolProcessor(
     private val options: Map<String, String>
 ) : SymbolProcessor {
 
+    private val inputSuffix = options["inputSuffix"] ?: "Input"
+    private val updateSuffix = options["updateSuffix"] ?: "Update"
+    private val nullableUpdates = options["nullableUpdates"]?.toBoolean() ?: true
+
     override fun process(resolver: Resolver): List<KSAnnotated> {
+        logger.info("- ${options.map { (k, v) -> "$k=$v" }}")
         val entities = resolver
             .getSymbolsWithAnnotation(Entity::class.qualifiedName!!)
             .filterIsInstance<KSClassDeclaration>()
             .toList()
 
-        if (entities.isEmpty()) return emptyList()
+        if (entities.isEmpty()) {
+            logger.info("Nenhuma entidade @Entity encontrada")
+            return emptyList()
+        }
 
         val deferred = mutableListOf<KSAnnotated>()
+        var processedCount = 0
 
         entities.forEach { entity ->
             if (!entity.validate()) {
                 deferred += entity
                 return@forEach
             }
-            runCatching { generateTypes(entity) }
-                .onFailure {
-                    logger.error("✗ ${entity.simpleName.asString()}: ${it.message}", entity)
-                    deferred += entity
-                }
+
+            runCatching {
+                generateTypesForEntity(entity)
+                processedCount++
+                logger.info("Tipos gerados para ${entity.qualifiedName?.asString()}")
+            }.onFailure { error ->
+                logger.error("Erro ao processar ${entity.simpleName.asString()}: ${error.message}", entity)
+                deferred += entity
+            }
         }
+
+        logger.info("Processamento concluído: $processedCount/${entities.size} entidades processadas")
         return deferred
     }
 
-    private fun generateTypes(entity: KSClassDeclaration) {
+    private fun generateTypesForEntity(entity: KSClassDeclaration) {
         val baseName = entity.simpleName.asString()
-        val pkg = entity.packageName.asString()
-        val outPkg = "$pkg.types"
+        val packageName = entity.packageName.asString()
+        val typesPackage = "$packageName.types"
 
-        val props = entity.getAllProperties().toList()
-        val idPropNames = props
-            .filter { p -> p.hasAnnotation(Id::class) }
+        val properties = entity.getAllProperties().toList()
+        val idPropertyNames = properties
+            .filter { it.hasAnnotation(Id::class) }
             .map { it.simpleName.asString() }
             .toSet()
 
-        val nonIdProps = props.filter {
-            it.isMutable && it.simpleName.asString() !in idPropNames
+        val editableProperties = properties.filter { prop ->
+            prop.isMutable &&
+                    prop.simpleName.asString() !in idPropertyNames &&
+                    !prop.hasAnnotation(jakarta.persistence.Version::class) // Excluir campos @Version
         }
 
-        // Input (non-nullable)
-        writeDataClass(
-            name = "${baseName}${options["inputSuffix"] ?: "Input"}",
-            packageName = outPkg,
-            properties = nonIdProps,
+        if (editableProperties.isEmpty()) {
+            logger.warn("⚠ Entidade ${baseName} não tem propriedades editáveis")
+            return
+        }
+
+        // Gerar Input (campos obrigatórios)
+        generateDataClass(
+            name = "$baseName$inputSuffix",
+            packageName = typesPackage,
+            properties = editableProperties,
             nullable = false,
-            originating = entity.containingFile!!
+            originatingFile = entity.containingFile!!
         )
 
-        // Update (nullable)
-        writeDataClass(
-            name = "${baseName}${options["updateSuffix"] ?: "Update"}",
-            packageName = outPkg,
-            properties = nonIdProps,
-            nullable = true,
-            originating = entity.containingFile!!
+        // Gerar Update (campos opcionais se configurado)
+        generateDataClass(
+            name = "$baseName$updateSuffix",
+            packageName = typesPackage,
+            properties = editableProperties,
+            nullable = nullableUpdates,
+            originatingFile = entity.containingFile!!
         )
     }
 
-    private fun writeDataClass(
+    private fun generateDataClass(
         name: String,
         packageName: String,
         properties: List<KSPropertyDeclaration>,
         nullable: Boolean,
-        originating: KSFile
+        originatingFile: KSFile
     ) {
-        val ctor = FunSpec.constructorBuilder()
-        val klass = TypeSpec.classBuilder(name)
+        val constructor = FunSpec.constructorBuilder()
+        val classBuilder = TypeSpec.classBuilder(name)
             .addModifiers(KModifier.DATA)
 
-        properties.forEach { prop ->
-            val pName = prop.simpleName.asString()
-            var pType = prop.type.toTypeName()
-            if (nullable && !pType.isNullable) pType = pType.copy(nullable = true)
+        properties.forEach { property ->
+            val propName = property.simpleName.asString()
+            var propType = property.type.toTypeName()
 
-            ctor.addParameter(
-                ParameterSpec.builder(pName, pType)
-                    .apply { if (nullable) defaultValue("null") }
-                    .build()
-            )
-            klass.addProperty(
-                PropertySpec.builder(pName, pType)
-                    .initializer(pName)
-                    .build()
-            )
+            // Aplicar nullabilidade se configurado
+            if (nullable && !propType.isNullable) {
+                propType = propType.copy(nullable = true)
+            }
+
+            // Parâmetro do construtor
+            val parameter = ParameterSpec.builder(propName, propType).apply {
+                if (nullable) defaultValue("null")
+            }.build()
+            constructor.addParameter(parameter)
+
+            // Propriedade da classe
+            val propertySpec = PropertySpec.builder(propName, propType)
+                .initializer(propName)
+                .build()
+            classBuilder.addProperty(propertySpec)
         }
 
-        klass.primaryConstructor(ctor.build())
+        classBuilder.primaryConstructor(constructor.build())
 
-        FileSpec.builder(packageName, name)
-            .addType(klass.build())
-            .addFileComment("AUTO-GENERATED – não editar.")
+        // Gerar e escrever ficheiro
+        val fileSpec = FileSpec.builder(packageName, name)
+            .addType(classBuilder.build())
+            .addFileComment("AUTO-GENERATED pelo graphql-types-generator v${javaClass.`package`.implementationVersion ?: "dev"}")
+            .addFileComment("Não editar manualmente - alterações serão perdidas na próxima geração")
             .build()
-            .writeTo(
-                codeGenerator,
-                aggregating = false,
-                originatingKSFiles = listOf(originating)
-            )
+
+        // CRÍTICO: declarar ficheiro de origem para processamento incremental
+        fileSpec.writeTo(
+            codeGenerator = codeGenerator,
+            aggregating = false, // Isolating - um output por input
+            originatingKSFiles = listOf(originatingFile)
+        )
+    }
+
+    private fun KSPropertyDeclaration.hasAnnotation(annotationClass: KClass<*>): Boolean {
+        return annotations.any { annotation ->
+            val annotationName = annotation.shortName.asString()
+            val annotationFqName = annotation.annotationType.resolve()
+                .declaration.qualifiedName?.asString()
+
+            annotationName == annotationClass.simpleName ||
+                    annotationFqName == annotationClass.qualifiedName
+        }
     }
 }
-
-/* helper */
-private fun KSPropertyDeclaration.hasAnnotation(klass: KClass<*>): Boolean =
-    annotations.any {
-        it.shortName.asString() == klass.simpleName ||
-                it.annotationType.resolve()
-                    .declaration.qualifiedName?.asString() == klass.qualifiedName
-    }

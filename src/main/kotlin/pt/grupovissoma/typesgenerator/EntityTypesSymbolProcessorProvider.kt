@@ -6,6 +6,7 @@ import com.google.devtools.ksp.processing.SymbolProcessorProvider
 
 class EntityTypesSymbolProcessorProvider : SymbolProcessorProvider {
     override fun create(environment: SymbolProcessorEnvironment): SymbolProcessor {
+        println("Creating EntityTypesSymbolProcessor with environment: $environment")
         return EntityTypesSymbolProcessor(
             codeGenerator = environment.codeGenerator,
             logger = environment.logger,
