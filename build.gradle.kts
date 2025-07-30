@@ -43,7 +43,6 @@ sonar {
 dependencies {
     implementation("com.google.devtools.ksp:symbol-processing-api:2.2.0-2.0.2")
     implementation("com.google.devtools.ksp:symbol-processing-gradle-plugin:2.2.0-2.0.2")
-    testImplementation("com.google.devtools.ksp:symbol-processing-gradle-plugin:2.2.0-2.0.2")
     implementation("com.squareup:kotlinpoet:2.2.0")
     implementation("com.squareup:kotlinpoet-ksp:2.2.0")
     implementation(kotlin("reflect"))
@@ -58,10 +57,7 @@ dependencies {
     testImplementation("jakarta.persistence:jakarta.persistence-api:3.2.0")
 //    testImplementation("dev.zacsweers.kctfork:core:0.8.0") // API principal
     testImplementation("dev.zacsweers.kctfork:ksp:0.8.0") // extensão KSP
-
-    testImplementation("com.squareup:kotlinpoet-ksp:2.2.0")
-    testImplementation("com.google.devtools.ksp:symbol-processing:2.2.0-2.0.2")
-    testImplementation("com.google.devtools.ksp:symbol-processing-api:2.2.0-2.0.2")
+    testImplementation("com.google.devtools.ksp:symbol-processing-gradle-plugin:2.2.0-2.0.2")
 
 
 }
@@ -80,7 +76,6 @@ gradlePlugin {
 
         }
     }
-    testSourceSets(sourceSets.test.get())
 
 }
 

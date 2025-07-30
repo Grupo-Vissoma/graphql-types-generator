@@ -46,7 +46,7 @@ class EntityGeneratorPluginFunctionalTest {
         testProjectDir = createTempDirectory(prefix = "pluginFT")
             .toFile()
             .apply {
-                deleteOnExit() // Ensure cleanup after tests
+                deleteOnExit()
             }
         File(testProjectDir, "settings.gradle.kts").writeText("rootProject.name = \"demo\"")
         File(testProjectDir, "build.gradle.kts").writeText(

@@ -72,7 +72,7 @@ class EntityTypesSymbolProcessor(
         }
 
         if (editableProperties.isEmpty()) {
-            logger.warn("⚠ Entidade ${baseName} não tem propriedades editáveis")
+            logger.warn("Entidade ${baseName} não tem propriedades editáveis")
             return
         }
 
