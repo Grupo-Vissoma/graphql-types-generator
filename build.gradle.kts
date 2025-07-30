@@ -80,6 +80,7 @@ gradlePlugin {
 
         }
     }
+    testSourceSets(sourceSets.test.get())
 
 }
 
