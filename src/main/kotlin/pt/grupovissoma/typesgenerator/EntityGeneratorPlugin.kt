@@ -40,7 +40,7 @@ class EntityGeneratorPlugin : Plugin<Project> {
      * Configura a integração com o KSP usando múltiplas estratégias para máxima compatibilidade
      */
     private fun Project.configureKspIntegration(extension: EntityGenExtension) {
-        var configured = false
+        var configured: Boolean
 
         // Estratégia 1: Configuração direta através da extensão KSP (preferida)
         configured = tryDirectKspConfiguration(extension)

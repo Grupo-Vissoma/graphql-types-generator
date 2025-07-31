@@ -12,7 +12,7 @@ import kotlin.reflect.KClass
 class EntityTypesSymbolProcessor(
     private val codeGenerator: CodeGenerator,
     private val logger: KSPLogger,
-    private val options: Map<String, String>
+    options: Map<String, String>
 ) : SymbolProcessor {
 
     private val inputSuffix = options["inputSuffix"] ?: "Input"
@@ -20,8 +20,6 @@ class EntityTypesSymbolProcessor(
     private val nullableUpdates = options["nullableUpdates"]?.toBoolean() ?: true
 
     override fun process(resolver: Resolver): List<KSAnnotated> {
-//        logger.info("${options.map { (k, v) -> "$k=$v" }}")
-        
         val entities = try {
             resolver
                 .getSymbolsWithAnnotation(Entity::class.qualifiedName!!)
