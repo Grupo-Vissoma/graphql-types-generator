@@ -7,6 +7,7 @@ import java.net.URI
 loadEnvFile()
 
 plugins {
+    id("idea")
     alias(libs.plugins.kotlin.jvm)
     alias(libs.plugins.java.gradle.plugin)
     alias(libs.plugins.gradle.plugin.publish)
@@ -14,6 +15,12 @@ plugins {
     alias(libs.plugins.jacoco)
     alias(libs.plugins.ksp)
     alias(libs.plugins.maven.publish)
+}
+idea {
+    module {
+        isDownloadJavadoc = false
+        isDownloadSources = false
+    }
 }
 
 group = "pt.grupovissoma"
