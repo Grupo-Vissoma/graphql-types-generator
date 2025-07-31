@@ -124,9 +124,11 @@ publishing {
             }
         }
     }
-    publications {
-        create<MavenPublication>("maven") {
-            from(components["java"])
+    if (System.getenv("CI") != "true") {
+        publications {
+            create<MavenPublication>("maven") {
+                from(components["java"])
+            }
         }
     }
 }
