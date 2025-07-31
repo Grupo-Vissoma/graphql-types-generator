@@ -91,7 +91,7 @@ class EntityTypesSymbolProcessor(
             logger.error("Entidade ${baseName} não tem arquivo de origem")
             return
         }
-
+        logger.info("Gerando tipos para entidade ${baseName} no pacote $typesPackage")
         // Gerar Input (campos obrigatórios)
         generateDataClass(
             name = "$baseName$inputSuffix",
