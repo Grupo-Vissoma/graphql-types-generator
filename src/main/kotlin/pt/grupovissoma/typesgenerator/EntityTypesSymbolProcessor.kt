@@ -20,11 +20,17 @@ class EntityTypesSymbolProcessor(
     private val nullableUpdates = options["nullableUpdates"]?.toBoolean() ?: true
 
     override fun process(resolver: Resolver): List<KSAnnotated> {
-        logger.info("- ${options.map { (k, v) -> "$k=$v" }}")
-        val entities = resolver
-            .getSymbolsWithAnnotation(Entity::class.qualifiedName!!)
-            .filterIsInstance<KSClassDeclaration>()
-            .toList()
+//        logger.info("${options.map { (k, v) -> "$k=$v" }}")
+        
+        val entities = try {
+            resolver
+                .getSymbolsWithAnnotation(Entity::class.qualifiedName!!)
+                .filterIsInstance<KSClassDeclaration>()
+                .toList()
+        } catch (e: Exception) {
+            logger.error("Erro ao obter entidades: ${e.message}")
+            return emptyList()
+        }
 
         if (entities.isEmpty()) {
             logger.info("Nenhuma entidade @Entity encontrada")
@@ -59,7 +65,13 @@ class EntityTypesSymbolProcessor(
         val packageName = entity.packageName.asString()
         val typesPackage = "$packageName.types"
 
-        val properties = entity.getAllProperties().toList()
+        val properties = try {
+            entity.getAllProperties().toList()
+        } catch (e: Exception) {
+            logger.error("Erro ao obter propriedades da entidade ${baseName}: ${e.message}")
+            return
+        }
+        
         val idPropertyNames = properties
             .filter { it.hasAnnotation(Id::class) }
             .map { it.simpleName.asString() }
@@ -76,13 +88,19 @@ class EntityTypesSymbolProcessor(
             return
         }
 
+        val originatingFile = entity.containingFile
+        if (originatingFile == null) {
+            logger.error("Entidade ${baseName} não tem arquivo de origem")
+            return
+        }
+
         // Gerar Input (campos obrigatórios)
         generateDataClass(
             name = "$baseName$inputSuffix",
             packageName = typesPackage,
             properties = editableProperties,
             nullable = false,
-            originatingFile = entity.containingFile!!
+            originatingFile = originatingFile
         )
 
         // Gerar Update (campos opcionais se configurado)
@@ -91,7 +109,7 @@ class EntityTypesSymbolProcessor(
             packageName = typesPackage,
             properties = editableProperties,
             nullable = nullableUpdates,
-            originatingFile = entity.containingFile!!
+            originatingFile = originatingFile
         )
     }
 
@@ -147,12 +165,18 @@ class EntityTypesSymbolProcessor(
 
     private fun KSPropertyDeclaration.hasAnnotation(annotationClass: KClass<*>): Boolean {
         return annotations.any { annotation ->
-            val annotationName = annotation.shortName.asString()
-            val annotationFqName = annotation.annotationType.resolve()
-                .declaration.qualifiedName?.asString()
+            try {
+                val annotationName = annotation.shortName.asString()
+                val annotationFqName = annotation.annotationType.resolve()
+                    .declaration.qualifiedName?.asString()
 
-            annotationName == annotationClass.simpleName ||
-                    annotationFqName == annotationClass.qualifiedName
+                annotationName == annotationClass.simpleName ||
+                        annotationFqName == annotationClass.qualifiedName
+            } catch (e: Exception) {
+                // Log warning but don't fail the entire process
+                logger.warn("Erro ao verificar anotação em propriedade ${simpleName.asString()}: ${e.message}")
+                false
+            }
         }
     }
 }

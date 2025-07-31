@@ -147,6 +147,12 @@ kotlin {
     jvmToolchain(21)
 }
 
+//tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
+//    compilerOptions {
+//        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
+//    }
+//}
+
 fun loadEnvFile(path: String = ".env") {
     val file = File(path)
     if (!file.exists()) return

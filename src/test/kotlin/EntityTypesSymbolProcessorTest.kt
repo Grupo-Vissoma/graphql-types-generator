@@ -26,7 +26,7 @@ class EntityTypesSymbolProcessorTest {
         import jakarta.persistence.*
         @Entity 
         data class Author(
-            /*@Id*/ val id: Long,
+            @Id val id: Long,
             var first: String,
             var last:  String
         )

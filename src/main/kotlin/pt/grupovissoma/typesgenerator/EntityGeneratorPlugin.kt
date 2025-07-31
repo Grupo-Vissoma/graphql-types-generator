@@ -53,7 +53,7 @@ class EntityGeneratorPlugin : Plugin<Project> {
         if (configured) {
             logConfigurationSuccess(extension)
         } else {
-            logger.error("✗ Falha na configuração do KSP - verifica se o plugin está corretamente aplicado")
+            logger.error("Falha na configuração do KSP - verifica se o plugin está corretamente aplicado")
         }
     }
 
@@ -74,11 +74,11 @@ class EntityGeneratorPlugin : Plugin<Project> {
                 logger.debug("KSP configurado através da extensão oficial")
                 true
             } else {
-                logger.debug("✗ Extensão KSP não encontrada")
+                logger.debug("Extensão KSP não encontrada")
                 false
             }
         } catch (e: Exception) {
-            logger.debug("✗ Configuração direta do KSP falhou: ${e.message}")
+            logger.debug("Configuração direta do KSP falhou: ${e.message}")
             false
         }
     }
@@ -103,11 +103,11 @@ class EntityGeneratorPlugin : Plugin<Project> {
                 logger.debug("${tasksConfigured} tarefa(s) KSP configurada(s) por reflexão")
                 true
             } else {
-                logger.debug("✗ Nenhuma tarefa KSP encontrada para configuração")
+                logger.debug("Nenhuma tarefa KSP encontrada para configuração")
                 false
             }
         } catch (e: Exception) {
-            logger.debug("✗ Configuração por reflexão falhou: ${e.message}")
+            logger.debug("Configuração por reflexão falhou: ${e.message}")
             false
         }
     }
@@ -125,13 +125,17 @@ class EntityGeneratorPlugin : Plugin<Project> {
                 val argMethod = kspConfig.javaClass.methods.find { it.name == "arg" }
 
                 if (argMethod != null) {
-                    // Aplicar todos os argumentos
-                    argMethod.invoke(kspConfig, "inputSuffix", extension.inputSuffix.get())
-                    argMethod.invoke(kspConfig, "updateSuffix", extension.updateSuffix.get())
-                    argMethod.invoke(kspConfig, "nullableUpdates", extension.nullableUpdates.get().toString())
-                    argMethod.invoke(kspConfig, "filters", extension.filters.get().joinToString(","))
-
-                    true
+                    // Aplicar todos os argumentos de forma segura
+                    try {
+                        argMethod.invoke(kspConfig, "inputSuffix", extension.inputSuffix.get())
+                        argMethod.invoke(kspConfig, "updateSuffix", extension.updateSuffix.get())
+                        argMethod.invoke(kspConfig, "nullableUpdates", extension.nullableUpdates.get().toString())
+                        argMethod.invoke(kspConfig, "filters", extension.filters.get().joinToString(","))
+                        true
+                    } catch (e: Exception) {
+                        logger.debug("Erro ao aplicar argumentos KSP: ${e.message}")
+                        false
+                    }
                 } else {
                     logger.debug("Método 'arg' não encontrado na configuração KSP")
                     false
