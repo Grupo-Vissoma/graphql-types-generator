@@ -20,7 +20,7 @@ class EntityTypesSymbolProcessorComprehensiveTest {
         
         @Entity 
         data class ComplexEntity(
-            @Id val id: Long,
+            @Id @GeneratedValue val id: Long,
             var name: String,
             var age: Int,
             var active: Boolean,
@@ -77,10 +77,10 @@ class EntityTypesSymbolProcessorComprehensiveTest {
         assertTrue(updateCode.contains("tags: List<String>?"), "List property should be nullable in Update")
         assertTrue(updateCode.contains("metadata: Map<String, Any>?"), "Map property should be nullable in Update")
         
-        // Verify that @Id and @Version fields are excluded
-        assertFalse(inputCode.contains("id: Long"), "@Id field should be excluded")
+        // Verify that @Id @GeneratedValue and @Version fields are excluded
+        assertFalse(inputCode.contains("id: Long"), "@Id @GeneratedValue field should be excluded")
         assertFalse(inputCode.contains("version: Long"), "@Version field should be excluded")
-        assertFalse(updateCode.contains("id: Long"), "@Id field should be excluded")
+        assertFalse(updateCode.contains("id: Long"), "@Id @GeneratedValue field should be excluded")
         assertFalse(updateCode.contains("version: Long"), "@Version field should be excluded")
     }
 
@@ -94,7 +94,7 @@ class EntityTypesSymbolProcessorComprehensiveTest {
         
         @Entity 
         data class User(
-            @Id val id: Long,
+            @Id @GeneratedValue val id: Long,
             var username: String,
             var email: String
         )
@@ -139,7 +139,7 @@ class EntityTypesSymbolProcessorComprehensiveTest {
         
         @Entity 
         data class ReadOnlyEntity(
-            @Id val id: Long,
+            @Id @GeneratedValue val id: Long,
             val name: String,  // val = immutable
             @Version val version: Long
         )
@@ -183,7 +183,7 @@ class EntityTypesSymbolProcessorComprehensiveTest {
         
         @Entity 
         data class IdOnlyEntity(
-            @Id val id: Long,
+            @Id @GeneratedValue val id: Long,
             @Version var version: Long
         )
         """.trimIndent()
@@ -206,7 +206,7 @@ class EntityTypesSymbolProcessorComprehensiveTest {
         val result = compilation.compile()
         assertEquals(KotlinCompilation.ExitCode.OK, result.exitCode)
 
-        // No files should be generated since only @Id and @Version properties exist
+        // No files should be generated since only @Id @GeneratedValue and @Version properties exist
         val inputFile = compilation.kspSourcesDir
             .resolve("kotlin/pt/grupovissoma/entity/types/IdOnlyEntityInput.kt")
         val updateFile = compilation.kspSourcesDir
@@ -226,7 +226,7 @@ class EntityTypesSymbolProcessorComprehensiveTest {
         
         @Entity 
         data class Product(
-            @Id val id: Long,
+            @Id @GeneratedValue val id: Long,
             var name: String,
             var price: Double
         )
@@ -240,7 +240,7 @@ class EntityTypesSymbolProcessorComprehensiveTest {
         
         @Entity 
         data class Category(
-            @Id val id: Long,
+            @Id @GeneratedValue val id: Long,
             var name: String,
             var description: String
         )
@@ -301,7 +301,7 @@ class EntityTypesSymbolProcessorComprehensiveTest {
         
         @Entity 
         data class AnnotatedEntity(
-            @Id val id: Long,
+            @Id @GeneratedValue val id: Long,
             @Column(name = "user_name") var name: String,
             @Transient var tempField: String,
             @Version var version: Long
@@ -330,12 +330,12 @@ class EntityTypesSymbolProcessorComprehensiveTest {
             .resolve("kotlin/pt/grupovissoma/entity/types/AnnotatedEntityInput.kt")
         val inputCode = inputFile.readText()
         
-        // @Column and @Transient properties should be included (they're not @Id or @Version)
+        // @Column and @Transient properties should be included (they're not @Id @GeneratedValue or @Version)
         assertTrue(inputCode.contains("name: String"), "@Column property should be included")
         assertTrue(inputCode.contains("tempField: String"), "@Transient property should be included")
         
-        // @Id and @Version should be excluded
-        assertFalse(inputCode.contains("id: Long"), "@Id field should be excluded")
+        // @Id @GeneratedValue and @Version should be excluded
+        assertFalse(inputCode.contains("id: Long"), "@Id @GeneratedValue field should be excluded")
         assertFalse(inputCode.contains("version: Long"), "@Version field should be excluded")
     }
 
@@ -349,7 +349,7 @@ class EntityTypesSymbolProcessorComprehensiveTest {
         
         @Entity 
         data class DeepEntity(
-            @Id val id: Long,
+            @Id @GeneratedValue val id: Long,
             var name: String
         )
         """.trimIndent()

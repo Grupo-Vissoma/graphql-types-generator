@@ -6,7 +6,7 @@ import com.google.devtools.ksp.validate
 import com.squareup.kotlinpoet.*
 import com.squareup.kotlinpoet.ksp.*
 import jakarta.persistence.Entity
-import jakarta.persistence.Id
+import jakarta.persistence.GeneratedValue
 import kotlin.reflect.KClass
 
 class EntityTypesSymbolProcessor(
@@ -71,7 +71,7 @@ class EntityTypesSymbolProcessor(
         }
         
         val idPropertyNames = properties
-            .filter { it.hasAnnotation(Id::class) }
+            .filter { it.hasAnnotation(GeneratedValue::class) }
             .map { it.simpleName.asString() }
             .toSet()
 
