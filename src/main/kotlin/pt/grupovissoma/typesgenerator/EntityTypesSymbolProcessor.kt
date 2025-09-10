@@ -4,6 +4,7 @@ import com.google.devtools.ksp.processing.*
 import com.google.devtools.ksp.symbol.*
 import com.google.devtools.ksp.validate
 import com.squareup.kotlinpoet.*
+import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
 import com.squareup.kotlinpoet.ksp.*
 import jakarta.persistence.Entity
 import jakarta.persistence.GeneratedValue
@@ -45,7 +46,7 @@ class EntityTypesSymbolProcessor(
             }
 
             runCatching {
-                generateTypesForEntity(entity)
+                generateTypesForEntity(entity, resolver)
                 processedCount++
                 logger.info("Tipos gerados para ${entity.qualifiedName?.asString()}")
             }.onFailure { error ->
@@ -58,7 +59,7 @@ class EntityTypesSymbolProcessor(
         return deferred
     }
 
-    private fun generateTypesForEntity(entity: KSClassDeclaration) {
+    private fun generateTypesForEntity(entity: KSClassDeclaration, resolver: Resolver) {
         val baseName = entity.simpleName.asString()
         val packageName = entity.packageName.asString()
         val typesPackage = "$packageName.types"
@@ -66,115 +67,139 @@ class EntityTypesSymbolProcessor(
         val properties = try {
             entity.getAllProperties().toList()
         } catch (e: Exception) {
-            logger.error("Erro ao obter propriedades da entidade ${baseName}: ${e.message}")
+            logger.error("Erro ao obter propriedades da entidade $baseName: ${e.message}")
             return
         }
-        
-        val idPropertyNames = properties
+
+        val idNames = properties
             .filter { it.hasAnnotation(GeneratedValue::class) }
             .map { it.simpleName.asString() }
             .toSet()
 
-        val editableProperties = properties.filter { prop ->
+        val editable = properties.filter { prop ->
             prop.isMutable &&
-                    prop.simpleName.asString() !in idPropertyNames &&
-                    !prop.hasAnnotation(jakarta.persistence.Version::class) // Excluir campos @Version
+                    prop.simpleName.asString() !in idNames &&
+                    !prop.hasAnnotation(jakarta.persistence.Version::class)
         }
 
-        if (editableProperties.isEmpty()) {
-            logger.warn("Entidade ${baseName} não tem propriedades editáveis")
+        if (editable.isEmpty()) {
+            logger.warn("Entidade $baseName não tem propriedades editáveis")
             return
         }
 
-        val originatingFile = entity.containingFile
-        if (originatingFile == null) {
-            logger.error("Entidade ${baseName} não tem arquivo de origem")
+        val origin = entity.containingFile ?: run {
+            logger.error("Entidade $baseName não tem arquivo de origem")
             return
         }
-        logger.info("Gerando tipos para entidade ${baseName} no pacote $typesPackage")
-        // Gerar Input (campos obrigatórios)
-        generateDataClass(
-            name = "$baseName$inputSuffix",
-            packageName = typesPackage,
-            properties = editableProperties,
-            nullable = false,
-            originatingFile = originatingFile
-        )
 
-        // Gerar Update (campos opcionais se configurado)
-        generateDataClass(
-            name = "$baseName$updateSuffix",
-            packageName = typesPackage,
-            properties = editableProperties,
-            nullable = nullableUpdates,
-            originatingFile = originatingFile
-        )
+        logger.info("Gerando tipos para entidade $baseName no pacote $typesPackage")
+        generateDataClass("$baseName$inputSuffix", typesPackage, editable, false, origin, resolver)
+        generateDataClass("$baseName$updateSuffix", typesPackage, editable, nullableUpdates, origin, resolver)
     }
 
     private fun generateDataClass(
-        name: String,
-        packageName: String,
-        properties: List<KSPropertyDeclaration>,
+        className: String,
+        pkg: String,
+        props: List<KSPropertyDeclaration>,
         nullable: Boolean,
-        originatingFile: KSFile
+        origin: KSFile,
+        resolver: Resolver
     ) {
-        val constructor = FunSpec.constructorBuilder()
-        val classBuilder = TypeSpec.classBuilder(name)
-            .addModifiers(KModifier.DATA)
+        val ctor = FunSpec.constructorBuilder()
+        val typeBuilder = TypeSpec.classBuilder(className).addModifiers(KModifier.DATA)
 
-        properties.forEach { property ->
-            val propName = property.simpleName.asString()
-            var propType = property.type.toTypeName()
+        props.forEach { prop ->
+            val name = prop.simpleName.asString()
+            var typeName = resolvePropertyType(prop, resolver)
 
-            // Aplicar nullabilidade se configurado
-            if (nullable && !propType.isNullable) {
-                propType = propType.copy(nullable = true)
+            if (nullable && !typeName.isNullable) {
+                typeName = typeName.copy(nullable = true)
             }
 
-            // Parâmetro do construtor
-            val parameter = ParameterSpec.builder(propName, propType).apply {
-                if (nullable) defaultValue("null")
-            }.build()
-            constructor.addParameter(parameter)
-
-            // Propriedade da classe
-            val propertySpec = PropertySpec.builder(propName, propType)
-                .initializer(propName)
-                .build()
-            classBuilder.addProperty(propertySpec)
+            ctor.addParameter(
+                ParameterSpec.builder(name, typeName).apply {
+                    if (nullable) defaultValue("null")
+                }.build()
+            )
+            typeBuilder.addProperty(
+                PropertySpec.builder(name, typeName)
+                    .initializer(name)
+                    .build()
+            )
         }
 
-        classBuilder.primaryConstructor(constructor.build())
+        typeBuilder.primaryConstructor(ctor.build())
 
-        // Gerar e escrever ficheiro
-        val fileSpec = FileSpec.builder(packageName, name)
-            .addType(classBuilder.build())
-            .addFileComment("AUTO-GENERATED pelo graphql-types-generator v${javaClass.`package`.implementationVersion ?: "dev"}")
+        FileSpec.builder(pkg, className)
+            .addType(typeBuilder.build())
+            .addFileComment("AUTO-GENERATED pelo graphql-types-generator")
             .addFileComment("Não editar manualmente - alterações serão perdidas na próxima geração")
             .build()
-
-        // CRÍTICO: declarar ficheiro de origem para processamento incremental
-        fileSpec.writeTo(
-            codeGenerator = codeGenerator,
-            aggregating = false, // Isolating - um output por input
-            originatingKSFiles = listOf(originatingFile)
-        )
+            .writeTo(codeGenerator, aggregating = false, originatingKSFiles = listOf(origin))
     }
 
-    private fun KSPropertyDeclaration.hasAnnotation(annotationClass: KClass<*>): Boolean {
-        return annotations.any { annotation ->
-            try {
-                val annotationName = annotation.shortName.asString()
-                val annotationFqName = annotation.annotationType.resolve()
-                    .declaration.qualifiedName?.asString()
+    private fun resolvePropertyType(prop: KSPropertyDeclaration, resolver: Resolver): TypeName {
+        val kstype = try {
+            prop.type.resolve()
+        } catch (e: Exception) {
+            return prop.type.toTypeName()
+        }
 
-                annotationName == annotationClass.simpleName ||
-                        annotationFqName == annotationClass.qualifiedName
-            } catch (e: Exception) {
-                // Log warning but don't fail the entire process
-                logger.warn("Erro ao verificar anotação em propriedade ${simpleName.asString()}: ${e.message}")
-                false
+        val decl = kstype.declaration
+        if (decl is KSClassDeclaration && decl.hasAnnotation(Entity::class)) {
+            return inputTypeNameFor(decl, kstype.isMarkedNullable)
+        }
+
+        if (kstype.arguments.isNotEmpty()) {
+            val argType = kstype.arguments.first().type?.resolve()
+            if (argType?.declaration is KSClassDeclaration &&
+                (argType.declaration as KSClassDeclaration).hasAnnotation(Entity::class)
+            ) {
+                return collectionInputTypeName(kstype, argType.declaration as KSClassDeclaration, kstype.isMarkedNullable)
             }
         }
+
+        return prop.type.toTypeName()
     }
+
+    private fun inputTypeNameFor(decl: KSClassDeclaration, nullable: Boolean): TypeName {
+        val base = decl.simpleName.asString()
+        val pkg = decl.packageName.asString()
+        val cn = ClassName("$pkg.types", "$base$inputSuffix")
+        return if (nullable) cn.copy(nullable = true) else cn
+    }
+
+    private fun collectionInputTypeName(
+        kstype: KSType,
+        decl: KSClassDeclaration,
+        nullable: Boolean
+    ): TypeName {
+        val base = decl.simpleName.asString()
+        val pkg = decl.packageName.asString()
+        val elem = ClassName("$pkg.types", "$base$inputSuffix")
+        val qn = kstype.declaration.qualifiedName?.asString()
+        val colType = when (qn) {
+            "kotlin.collections.List" -> LIST.parameterizedBy(elem)
+            "kotlin.collections.Set" -> SET.parameterizedBy(elem)
+            "kotlin.collections.MutableList" -> MUTABLE_LIST.parameterizedBy(elem)
+            "kotlin.collections.MutableSet" -> MUTABLE_SET.parameterizedBy(elem)
+            "kotlin.collections.Collection" -> COLLECTION.parameterizedBy(elem)
+            else -> return kstype.toTypeName()
+        }
+        return if (nullable) colType.copy(nullable = true) else colType
+    }
+
+    private fun KSPropertyDeclaration.hasAnnotation(anno: KClass<*>): Boolean =
+        annotations.any { a ->
+            val name = a.shortName.asString()
+            val fq = a.annotationType.resolve().declaration.qualifiedName?.asString()
+            name == anno.simpleName || fq == anno.qualifiedName
+        }
+
+    private fun KSClassDeclaration.hasAnnotation(anno: KClass<*>): Boolean =
+        annotations.any { a ->
+            val name = a.shortName.asString()
+            val fq = a.annotationType.resolve().declaration.qualifiedName?.asString()
+            name == anno.simpleName || fq == anno.qualifiedName
+        }
 }
