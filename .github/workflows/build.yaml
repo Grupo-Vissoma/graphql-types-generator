@@ -10,7 +10,7 @@ on:
 jobs:
   build:
     name: Build and analyze
-    runs-on: self-hosted
+    runs-on: arc-runner-set
 
     steps:
       - uses: actions/checkout@v4
